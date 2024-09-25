@@ -10,6 +10,7 @@ use crossterm::{
     ExecutableCommand,
 };
 use invaders::frame::{new_frame, Drawable};
+use invaders::invaders::Invaders;
 use invaders::player::Player;
 use invaders::{frame, render};
 use rusty_audio::Audio;
@@ -52,6 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // game loop
     let mut player = Player::new();
     let mut instant = Instant::now();
+    let mut invaders = Invaders::new();
     'gameloop: loop {
         // per-frame init
         let delta = instant.elapsed();
@@ -80,16 +82,35 @@ fn main() -> Result<(), Box<dyn Error>> {
 
         // updates
         player.update(delta);
+        if invaders.update(delta) {
+            audio.play("move");
+        }
+        if player.detect_hits(&mut invaders) {
+            audio.play("explode");
+        }
 
         /*
             draw and render
             this will be received and handled by the rendering loop
             will probably fail first few times, because the child thread won't have been set up -> ignore error
         */
-        player.draw(&mut curr_frame);
+        let drawables: Vec<&dyn Drawable> = vec![&player, &invaders];
+        for drawable in drawables {
+            drawable.draw(&mut curr_frame);
+        }
         let _ = render_tx.send(curr_frame);
         // tiny sleep to stop frames constantly being rendered
         thread::sleep(Duration::from_millis(1));
+
+        // win or lose?
+        if invaders.all_killed() {
+            audio.play("win");
+            break 'gameloop;
+        }
+        if invaders.reached_bottom() {
+            audio.play("lose");
+            break 'gameloop;
+        }
     }
 
     // cleanup
